@@ -1,0 +1,177 @@
+local EventHandler
+
+for i, v in pairs(getgc()) do
+    if typeof(v) == "function" and islclosure(v) and not is_synapse_function(v) and debug.getinfo(v).name == "GetEventHandler" then
+        EventHandler = v
+        break
+    end
+end
+
+local Table2 = getupvalue(EventHandler, 1)
+
+for i, v in pairs(Table2) do
+    if v.Remote then
+        v.Remote.Name = i
+    end
+end
+
+local LocalPlayer = game.Players.LocalPlayer
+local Events = game:GetService("ReplicatedStorage"):WaitForChild("Communication"):WaitForChild("Events")
+
+-- Function to prevent infinite loops or stops
+local function SafeWait(timeLimit)
+    local startTime = tick()
+    repeat wait(0.1) until tick() - startTime >= timeLimit
+end
+
+local function FindChildByIndexSequence(Parent, IndexSequence)
+    local CurrentChild = Parent
+    for _, Index in ipairs(IndexSequence) do
+        CurrentChild = CurrentChild:FindFirstChild(tostring(Index))
+        if not CurrentChild then
+            return nil
+        end
+    end
+    return CurrentChild
+end
+
+local function WalkToPoint(TargetPoint)
+    local Humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+    if Humanoid then
+        Humanoid:MoveTo(TargetPoint)
+    end
+
+    return function()
+        repeat
+            SafeWait(0.1)
+            Humanoid:MoveTo(TargetPoint)
+        until (LocalPlayer.Character.HumanoidRootPart.Position * Vector3.new(1, 0, 1) - TargetPoint * Vector3.new(1, 0, 1)).Magnitude < 2
+    end
+end
+
+local function TeleportToJob(Name)
+    local args = { "TeleportToJob", Name }
+    game:GetService("ReplicatedStorage"):WaitForChild("PlayerChannel"):FireServer(unpack(args))
+end
+
+for _, v in pairs(getconnections(workspace.Main.GivePaycheck.OnClientEvent)) do
+    v:Disable()
+end
+
+local function ClaimPaycheck()
+    pcall(function()
+        workspace:WaitForChild("Main"):WaitForChild("GivePaycheck"):FireServer("Paycheck", false)
+    end)
+end
+
+local MainClass = { CharacterAddedConnections = {} }
+
+function MainClass:Init(HideOtherCharacters)
+    if HideOtherCharacters then
+        for _, Player in pairs(game.Players:GetPlayers()) do
+            if Player ~= LocalPlayer then
+                Player.Character.Parent = nil
+                local CharacterConnection = Player.CharacterAdded:Connect(function(Character)
+                    SafeWait(0.1)
+                    Character.Parent = nil
+                end)
+                self.CharacterAddedConnections[Player] = CharacterConnection
+            end
+        end
+
+        game.Players.PlayerAdded:Connect(function(Player)
+            if Player ~= LocalPlayer then
+                local CharacterConnection = Player.CharacterAdded:Connect(function(Character)
+                    SafeWait(0.1)
+                    Character.Parent = nil
+                end)
+                self.CharacterAddedConnections[Player] = CharacterConnection
+            end
+        end)
+
+        game.Players.PlayerRemoving:Connect(function(Player)
+            local Connection = self.CharacterAddedConnections[Player]
+            if Connection then
+                Connection:Disconnect()
+                self.CharacterAddedConnections[Player] = nil
+            end
+        end)
+
+        workspace.Main.GivePaycheck.OnClientEvent:Connect(ClaimPaycheck)
+    end
+end
+
+local CashierClass = { Timeout = 10, Registers = { workspace.Register1, workspace.Register2, workspace.Register3 } }
+
+function CashierClass:GetCustomers()
+    local ValidCustomers = {}
+    for _, Customer in pairs(workspace.Customers:GetChildren()) do
+        if Customer:FindFirstChild("HumanoidRootPart") and not Customer:GetAttribute("AlreadyHandled") then
+            local Register = self:GetRegisterFromCustomer(Customer)
+            if Register and (Customer.HumanoidRootPart.Position - Register.Screen.Position).Magnitude < 22 then
+                table.insert(ValidCustomers, Customer)
+            end
+        end
+    end
+    return ValidCustomers
+end
+
+function CashierClass:GetRegisterFromCustomer(Customer)
+    local BestRegister, BestDistance = nil, math.huge
+    for _, Register in pairs(self.Registers) do
+        local Distance = (Customer.HumanoidRootPart.Position - Register.Screen.Position).Magnitude
+        if Distance < BestDistance then
+            BestDistance = Distance
+            BestRegister = Register
+        end
+    end
+    return BestRegister
+end
+
+function CashierClass:HandleCustomerDialog(Customer, Register)
+    if FindChildByIndexSequence(Customer, { "Head", "DialogSimple", "Correct" }) then
+        workspace:WaitForChild("Dialog"):FireServer("ClickedBubble", Customer.Head)
+        workspace:WaitForChild("Dialog"):FireServer("ResponseSelected", Customer.Head.DialogSimple.Correct, Customer.Head)
+
+        local OrderString
+        local ClientOrderConnection = self.OrderConnection:Connect(function(Order)
+            OrderString = Order
+            ClientOrderConnection:Disconnect()
+        end)
+
+        SafeWait(self.Timeout)
+
+        if OrderString then
+            Events.OrderComplete:FireServer(Customer, OrderString, Register)
+            Customer:SetAttribute("AlreadyHandled", true)
+        end
+    end
+end
+
+local function MainLoop()
+    while task.wait(1) do
+        if LocalPlayer.Team ~= game:GetService("Teams").Cashier then
+            TeleportToJob("Cashier")
+        end
+
+        local ClosestCustomer = CashierClass:GetCustomers()[1]
+        if ClosestCustomer then
+            local TargetRegister = CashierClass:GetRegisterFromCustomer(ClosestCustomer)
+            if TargetRegister then
+                WalkToPoint(TargetRegister.Border.Position + (-TargetRegister.Border.CFrame.LookVector).Unit * 5)()
+                LocalPlayer.Character:PivotTo(CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position, ClosestCustomer.HumanoidRootPart.Position))
+                CashierClass:HandleCustomerDialog(ClosestCustomer, TargetRegister)
+            end
+        end
+    end
+end
+
+-- Ensuring script restarts if stopped
+coroutine.wrap(function()
+    while true do
+        pcall(MainLoop)
+        SafeWait(5) -- Prevent instant restarts if an error occurs
+    end
+end)()
+
+MainClass:Init(true)
