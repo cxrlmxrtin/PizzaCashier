@@ -18,7 +18,6 @@ end
 local LocalPlayer = game.Players.LocalPlayer
 local Events = game:GetService("ReplicatedStorage"):WaitForChild("Communication"):WaitForChild("Events")
 
--- Function to prevent infinite loops or stops
 local function SafeWait(timeLimit)
     local startTime = tick()
     repeat wait(0.1) until tick() - startTime >= timeLimit
@@ -149,24 +148,26 @@ function CashierClass:HandleCustomerDialog(Customer, Register)
 end
 
 local function MainLoop()
-    while task.wait(1) do
-        if LocalPlayer.Team ~= game:GetService("Teams").Cashier then
-            TeleportToJob("Cashier")
-        end
-
-        local ClosestCustomer = CashierClass:GetCustomers()[1]
-        if ClosestCustomer then
-            local TargetRegister = CashierClass:GetRegisterFromCustomer(ClosestCustomer)
-            if TargetRegister then
-                WalkToPoint(TargetRegister.Border.Position + (-TargetRegister.Border.CFrame.LookVector).Unit * 5)()
-                LocalPlayer.Character:PivotTo(CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position, ClosestCustomer.HumanoidRootPart.Position))
-                CashierClass:HandleCustomerDialog(ClosestCustomer, TargetRegister)
+    while true do
+        pcall(function()
+            if LocalPlayer.Team ~= game:GetService("Teams").Cashier then
+                TeleportToJob("Cashier")
             end
-        end
+
+            local ClosestCustomer = CashierClass:GetCustomers()[1]
+            if ClosestCustomer then
+                local TargetRegister = CashierClass:GetRegisterFromCustomer(ClosestCustomer)
+                if TargetRegister then
+                    WalkToPoint(TargetRegister.Border.Position + (-TargetRegister.Border.CFrame.LookVector).Unit * 5)()
+                    LocalPlayer.Character:PivotTo(CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position, ClosestCustomer.HumanoidRootPart.Position))
+                    CashierClass:HandleCustomerDialog(ClosestCustomer, TargetRegister)
+                end
+            end
+        end)
+        SafeWait(1) -- Avoid immediate restart if no customer is found
     end
 end
 
--- Ensuring script restarts if stopped
 coroutine.wrap(function()
     while true do
         pcall(MainLoop)
