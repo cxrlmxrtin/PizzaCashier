@@ -18,6 +18,7 @@ end
 local LocalPlayer = game.Players.LocalPlayer
 local Events = game:GetService("ReplicatedStorage"):WaitForChild("Communication"):WaitForChild("Events")
 
+-- Function to prevent infinite loops or stops
 local function SafeWait(timeLimit)
     local startTime = tick()
     repeat wait(0.1) until tick() - startTime >= timeLimit
@@ -147,6 +148,13 @@ function CashierClass:HandleCustomerDialog(Customer, Register)
     end
 end
 
+local function RestartScript()
+    print("Restarting script...")
+    wait(2) -- Small delay to prevent excessive resets
+    MainClass:Init(true) -- Reinitialize the main class
+    coroutine.wrap(MainLoop)() -- Restart the cashier loop
+end
+
 local function MainLoop()
     while true do
         pcall(function()
@@ -164,10 +172,14 @@ local function MainLoop()
                 end
             end
         end)
-        SafeWait(1) -- Avoid immediate restart if no customer is found
+
+        SafeWait(1) -- Prevent excessive CPU usage
     end
+
+    RestartScript() -- Restart once loop ends
 end
 
+-- Ensuring script restarts if stopped
 coroutine.wrap(function()
     while true do
         pcall(MainLoop)
