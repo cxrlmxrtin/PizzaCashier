@@ -142,8 +142,11 @@ function CashierClass:HandleCustomerDialog(Customer, Register)
         SafeWait(self.Timeout)
 
         if OrderString then
+            print("Order Registered:", OrderString) -- Debugging log
             Events.OrderComplete:FireServer(Customer, OrderString, Register)
             Customer:SetAttribute("AlreadyHandled", true)
+        else
+            print("Order Not Registered - Retrying...") -- Debugging log
         end
     end
 end
